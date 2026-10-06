@@ -60,39 +60,6 @@ No es teoría suelta: cada clase deja una máquina más segura que al empezar, y
 
 ---
 
-## 🚀 Cómo usar este repositorio
-
-**1. Clónalo una sola vez**
-```bash
-git clone https://github.com/<tu-usuario>/senati-m4-aseguramiento.git
-cd senati-m4-aseguramiento
-```
-
-**2. Antes de cada clase, actualiza**
-```bash
-git pull
-```
-
-**3. Abre el laboratorio de la sesión**
-Cada clase vive en su carpeta (`clase-01-fundamentos/`, `clase-02-windows/`, …) con un `README.md` que puedes leer directamente aquí en GitHub.
-
----
-
-## 📤 Cómo entregar (Pull Request)
-
-1. Haz **fork** de este repositorio a tu cuenta.
-2. Completa la entrega dentro de `clase-XX/entregas/<tu-usuario>.md`.
-3. Sube tus cambios y abre un **Pull Request** al repo del curso:
-   ```bash
-   git add .
-   git commit -m "Clase XX · entrega <tu-nombre>"
-   git push
-   ```
-
-> 🎓 Entregas practicando Git: la misma habilidad que usarás en un entorno profesional.
-
----
-
 ## 📚 Marcos de referencia
 
 `ISO/IEC 27001` · `ISO/IEC 27002` · `NIST (CSF / 800-53)` · `CIS Controls & Benchmarks` · `PCI DSS`
@@ -101,7 +68,7 @@ Cada clase vive en su carpeta (`clase-01-fundamentos/`, `clase-02-windows/`, …
 
 <div align="center">
 
-**Docente:** Ademir Cuadros · **NRC:** 166 · **Periodo:** 202619
+**Docente:** Brian Dextre · **NRC:** 166 · **Periodo:** 202619
 Escuela de Postgrado Tecnológico — TECH SENATI
 
 <sub>Material educativo. Los laboratorios se ejecutan únicamente sobre máquinas virtuales de práctica.</sub>
