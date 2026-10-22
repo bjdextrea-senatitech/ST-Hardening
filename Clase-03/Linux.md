@@ -10,12 +10,13 @@
 
 | Lab | Qué haces | Tiempo |
 | --- | --- | --- |
-| 0 | Preparar la VM, las herramientas y las variables | 5 min |
-| 1 | Reconocimiento manual: 22 comandos detectives | 15 min |
+| 0 | Preparar la VM y las herramientas | 5 min |
+| 1 | Reconocimiento manual: 22 comandos detectives | 12 min |
+| 1b | Buscar vías de escalada de privilegios: 13 comandos | 8 min |
 | 2 | Línea base: Lynis, OpenSCAP y vista desde Kali | 20 min |
-| 3 | Hardening manual en 12 bloques, verificando cada regla | 45 min |
+| 3 | Hardening manual en 13 bloques, verificando cada regla | 43 min |
 | 4 | Remediación automática con control | 10 min |
-| 5 | Volver a medir y comparar antes / después | 20 min |
+| 5 | Volver a medir y comparar antes / después | 17 min |
 | | Entrega | 5 min |
 
 Los bloques marcados **(bonus)** son para quien termine antes. Si no llegas, déjalos para casa.
@@ -87,17 +88,19 @@ El contenido lo publica el proyecto **ComplianceAsCode** (antes llamado SCAP Sec
 
 ### 0.1 Carpeta de trabajo
 
+Todo el laboratorio se trabaja en `/home/brian/`. Si tu usuario tiene otro nombre, reemplaza `brian` por el tuyo en todos los comandos.
+
 ```bash
-mkdir -p ~/lab && cd ~/lab
+cd /home/brian
 # Copia aquí ssg-ubuntu2204-ds.xml y lynis2html.py (desde el repo del curso)
-ls -lh
+ls -lh /home/brian/ssg-ubuntu2204-ds.xml /home/brian/lynis2html.py
 ```
 
 > Si no tienes el datastream, baja el paquete oficial (183 MB):
 > ```bash
 > sudo apt install -y unzip
 > wget https://github.com/ComplianceAsCode/content/releases/download/v0.1.82/scap-security-guide-0.1.82.zip
-> unzip -j scap-security-guide-0.1.82.zip scap-security-guide-0.1.82/ssg-ubuntu2204-ds.xml
+> unzip -j scap-security-guide-0.1.82.zip scap-security-guide-0.1.82/ssg-ubuntu2204-ds.xml -d /home/brian
 > ```
 
 ### 0.2 Instalar las herramientas
@@ -106,43 +109,51 @@ ls -lh
 
 ```bash
 sudo apt update
-sudo apt install -y libopenscap8 git
-
-# Lynis, versión más reciente desde GitHub
-git clone --depth 1 https://github.com/CISOfy/lynis ~/lynis
-sudo chown -R root:root ~/lynis
+sudo apt install -y libopenscap8 lynis
+oscap --version | head -n 1
+lynis show version
 ```
 
-**Teoría:** el `chown` es obligatorio. Lynis se niega a ejecutarse como root si sus archivos pertenecen a otro usuario, porque alguien podría modificarlos para ejecutar código como root.
+**Teoría:** los dos vienen de los repositorios oficiales de Ubuntu. `libopenscap8` instala el comando `oscap`, y `lynis` se ejecuta con `sudo lynis`. La versión de Lynis del repositorio es algo más antigua que la de GitHub, pero hace las mismas pruebas que usamos en clase.
 
-> Alternativa: `sudo apt install -y lynis`. Es una versión algo más antigua, pero funciona igual. En ese caso, en vez de `sudo ~/lynis/lynis` escribe `sudo lynis`.
+### 0.3 Cómo se verifica una regla
 
-### 0.3 Variables y ayudante de verificación
+En el Lab 3 vas a comprobar cada corrección evaluando **solo esas reglas**, no el perfil completo. Escribe siempre el comando completo, así aprendes qué hace cada parte:
 
 ```bash
-DS=~/lab/ssg-ubuntu2204-ds.xml
-P=xccdf_org.ssgproject.content_profile_cis_level1_server
-R=xccdf_org.ssgproject.content_rule_
-
-chk() {
-  local a=()
-  for r in "$@"; do a+=(--rule "${R}$r"); done
-  sudo oscap xccdf eval --profile "$P" "${a[@]}" "$DS" 2>/dev/null |
-    awk -F'\t' '/^Rule/{sub(/.*content_rule_/,"",$2); r=$2} /^Result/{printf "%-45s %s\n", r, $2}'
-}
+sudo oscap xccdf eval \
+  --profile xccdf_org.ssgproject.content_profile_cis_level1_server \
+  --rule xccdf_org.ssgproject.content_rule_sshd_disable_root_login \
+  /home/brian/ssg-ubuntu2204-ds.xml 2>/dev/null | grep -E '^(Title|Result)'
 ```
 
-**Teoría:** `chk` evalúa **solo las reglas que le pases** y muestra una línea por regla. Una evaluación completa tarda minutos; con `chk` verificas cada corrección en segundos. Acepta varias reglas a la vez:
+| Parte | Qué hace |
+| --- | --- |
+| `xccdf eval` | Evalúa reglas del checklist |
+| `--profile ...cis_level1_server` | Toma los valores del perfil CIS L1 Server (por ejemplo, cuántos intentos de SSH permite) |
+| `--rule ...content_rule_<nombre>` | Evalúa **solo** esa regla |
+| `/home/brian/ssg-ubuntu2204-ds.xml` | El datastream con las reglas y las pruebas |
+| `2>/dev/null` | Oculta las advertencias técnicas del escáner |
+| `grep -E` con `Title` y `Result` | Muestra solo el nombre de cada regla y su resultado |
+
+**Teoría:** una evaluación completa tarda minutos. Con `--rule` verificas una corrección en segundos. Todas las reglas empiezan con `xccdf_org.ssgproject.content_rule_`, seguido del nombre corto que ves en el reporte HTML.
+
+**Para verificar varias reglas** se usa un `for`. La versión de `oscap` de Ubuntu 22.04 (1.2.17) **solo evalúa la última** `--rule` si pones varias en el mismo comando, así que hay que evaluarlas una por una:
 
 ```bash
-chk sshd_disable_root_login sshd_set_max_auth_tries
+for r in sshd_disable_root_login sshd_set_max_auth_tries; do
+  sudo oscap xccdf eval \
+    --profile xccdf_org.ssgproject.content_profile_cis_level1_server \
+    --rule xccdf_org.ssgproject.content_rule_$r \
+    /home/brian/ssg-ubuntu2204-ds.xml 2>/dev/null | grep -E '^(Title|Result)'
+done
 ```
 
-> Si cierras la terminal, vuelve a pegar el bloque 0.3.
+**Teoría del `for`:** repite el comando una vez por cada nombre de la lista. En cada vuelta, `$r` toma el valor del nombre que toca, y queda pegado al final del prefijo de la regla.
 
 ---
 
-## Lab 1 · Reconocimiento manual: comandos detectives (15 min)
+## Lab 1 · Reconocimiento manual: comandos detectives (12 min)
 
 Antes de usar herramientas automáticas, mira el sistema con tus propios ojos. Para cada comando, **anota la respuesta** en tu entrega.
 
@@ -295,14 +306,112 @@ sysctl kernel.randomize_va_space net.ipv4.conf.all.send_redirects net.ipv4.conf.
 
 ---
 
+## Lab 1b · Buscar vías de escalada de privilegios (8 min)
+
+Un atacante que entra con un usuario sin privilegios busca de inmediato cómo convertirse en root. Aquí revisas tu servidor **con sus ojos**, para cerrar esas puertas antes que él. Anota lo que encuentres.
+
+### Privilegios ocultos en archivos
+
+**23. ¿Qué programas tienen capabilities?**
+Una capability entrega a un programa **una parte** del poder de root sin hacerlo SUID. `ping` o `mtr-packet` con `cap_net_raw` es normal, y también `snap-confine`, que necesita muchas capabilities para aislar las aplicaciones snap. Un intérprete o editor (`python`, `perl`, `vim`, `tar`) con `cap_setuid`, `cap_dac_read_search` o `cap_sys_admin` es una vía directa a root.
+```bash
+getcap -r / 2>/dev/null
+```
+
+**24. ¿Hay carpetas compartidas sin sticky bit?**
+En una carpeta donde todos escriben, el **sticky bit** (la `t` al final de los permisos) impide que un usuario borre o renombre los archivos de otro. No debería salir ninguna carpeta en el `find`, y `/tmp` y `/var/tmp` deben mostrar `drwxrwxrwt`.
+```bash
+sudo find / -xdev -type d -perm -0002 ! -perm -1000 2>/dev/null
+ls -ld /tmp /var/tmp /dev/shm
+```
+
+**25. ¿Qué programas tienen SGID?**
+Un binario SGID se ejecuta con el **grupo** de su dueño. Es menos grave que SUID, pero un SGID del grupo `shadow` puede leer los hashes de contraseñas. Compara con la lista de un sistema limpio.
+```bash
+sudo find / -xdev -perm -2000 -type f 2>/dev/null
+```
+
+### Sudo y tareas programadas
+
+**26. ¿Qué puede hacer tu usuario con sudo?**
+`sudo -l` lista los comandos que cada usuario puede ejecutar como root. `(ALL : ALL) ALL` significa "todo".
+```bash
+sudo -l
+```
+
+**27. ¿Hay reglas de sudo sin contraseña?**
+`NOPASSWD` permite usar sudo sin escribir la contraseña: si alguien roba esa sesión, es root sin esfuerzo. No debería salir nada.
+```bash
+sudo grep -rn NOPASSWD /etc/sudoers /etc/sudoers.d/
+```
+
+**28. ¿Qué tareas programa systemd?**
+Los *timers* de systemd son el reemplazo moderno de cron. Cada uno ejecuta un servicio, casi siempre como root.
+```bash
+systemctl list-timers --all
+```
+
+**29. ¿Qué tareas cron tiene cada usuario?**
+Revisa los crontab de **todos** los usuarios. Una tarea desconocida que corre como root es una forma clásica de persistencia.
+```bash
+for u in $(cut -d: -f1 /etc/passwd); do sudo crontab -l -u "$u" 2>/dev/null | sed "s/^/$u: /"; done
+ls -la /etc/cron.d
+```
+
+**30. ¿Algún script de cron lo puede modificar otro usuario?**
+Si un script que root ejecuta periódicamente es modificable por el grupo o por otros, cualquiera puede inyectarle código. No debería salir nada.
+```bash
+sudo find /etc/cron* -type f -perm /022 2>/dev/null
+```
+
+### Rutas y montajes
+
+**31. ¿Alguna carpeta del PATH es escribible por otros?**
+Si una carpeta del PATH es escribible por otros, alguien puede dejar ahí un `ls` falso que ejecutarías sin darte cuenta. Ninguna carpeta debería tener `w` en el grupo ni en otros. Si aparece `cannot access '/snap/bin'`, es porque todavía no hay aplicaciones snap instaladas: no es un problema.
+```bash
+echo "$PATH" | tr ':' '\n' | xargs -I{} ls -ld {}
+```
+
+**32. ¿Con qué opciones están montadas las carpetas temporales?**
+CIS pide `nodev,nosuid,noexec` en `/dev/shm` y en `/tmp`. Con `noexec`, un atacante no puede ejecutar herramientas que descargue en esas carpetas. En Ubuntu, `/tmp` normalmente **no** es una partición separada: por eso la regla `partition_for_tmp` queda en FAIL.
+```bash
+findmnt -o TARGET,OPTIONS /dev/shm
+findmnt /tmp || echo "/tmp no es una partición separada"
+```
+
+### Cuentas y accesos
+
+**33. ¿Hay UIDs repetidos y en qué estado está cada cuenta?**
+Dos cuentas con el mismo UID son, para el sistema, **la misma persona**. En `passwd -S`, la segunda columna dice `P` (tiene contraseña), `L` (bloqueada) o `NP` (sin contraseña). `NP` en una cuenta que puede entrar es grave.
+```bash
+cut -d: -f3 /etc/passwd | sort | uniq -d
+sudo passwd -S -a
+```
+
+**34. ¿Otros usuarios pueden entrar a los home?**
+Desde Ubuntu 21.04 los home nuevos se crean con `750` (`drwxr-x---`): otros usuarios no pueden entrar. Si ves `755` (`drwxr-xr-x`), cualquiera puede listar los archivos de ese usuario; pasa con cuentas creadas a mano o migradas de versiones antiguas. CIS pide `750` o más restrictivo.
+```bash
+ls -ld /home/*
+```
+
+**35. ¿Qué llaves SSH permiten entrar sin contraseña?**
+Cada línea de un `authorized_keys` es una llave que entra sin contraseña. Una llave que nadie reconoce es una **puerta trasera clásica**.
+```bash
+sudo find / -xdev -name authorized_keys 2>/dev/null -exec ls -l {} \;
+```
+
+> Estos 35 comandos son una muestra. La guía `guia-comprobacion-manual-linux.md`, en esta misma carpeta, recorre todas las áreas del hardening con 92 comprobaciones y un checklist para marcar.
+
+---
+
 ## Lab 2 · Línea base (20 min)
 
 ### 2.1 Lynis "antes" (7 min)
 
 ```bash
-cd ~/lab
-sudo ~/lynis/lynis audit system --quick \
-  --report-file ~/lab/lynis-antes.dat --log-file ~/lab/lynis-antes.log
+cd /home/brian
+sudo lynis audit system --quick \
+  --report-file /home/brian/lynis-antes.dat --log-file /home/brian/lynis-antes.log
 ```
 
 | Opción | Qué hace |
@@ -342,16 +451,19 @@ sudo grep -A6 'test ID AUTH-9286' lynis-antes.log   # qué revisó una prueba co
 Mira los perfiles que trae el datastream:
 
 ```bash
-oscap info $DS | grep -E 'Title:|Id: xccdf_org.ssgproject.content_profile'
+oscap info /home/brian/ssg-ubuntu2204-ds.xml | grep -E 'Title:|Id: xccdf_org.ssgproject.content_profile'
 ```
 
-**Teoría:** `oscap info` describe el contenido del archivo: versión, componentes y perfiles. Cada perfil tiene un ID largo. Ese ID es el que va en `--profile`, en nuestro caso guardado en `$P`.
+**Teoría:** `oscap info` describe el contenido del archivo: versión, componentes y perfiles. Cada perfil tiene un ID largo. Ese ID es el que va en `--profile`: `xccdf_org.ssgproject.content_profile_cis_level1_server`.
 
 Escanea con el perfil CIS Level 1 Server:
 
 ```bash
-sudo oscap xccdf eval --profile $P \
-  --results antes.xml --report antes.html $DS > antes.txt 2>/dev/null
+sudo oscap xccdf eval \
+  --profile xccdf_org.ssgproject.content_profile_cis_level1_server \
+  --results /home/brian/antes.xml \
+  --report /home/brian/antes.html \
+  /home/brian/ssg-ubuntu2204-ds.xml > /home/brian/antes.txt 2>/dev/null
 echo "Código de salida: $?"
 grep -c 'Result.*pass$' antes.txt
 grep -c 'Result.*fail$' antes.txt
@@ -360,9 +472,9 @@ grep -c 'Result.*fail$' antes.txt
 | Parte del comando | Qué hace |
 | --- | --- |
 | `xccdf eval` | Evalúa las reglas del checklist |
-| `--profile $P` | Usa solo las reglas del perfil CIS L1 Server |
-| `--results antes.xml` | Resultados en XML: los necesitas para generar correcciones en el Lab 4 |
-| `--report antes.html` | Reporte legible con explicación y corrección sugerida por regla |
+| `--profile ...cis_level1_server` | Usa solo las reglas del perfil CIS L1 Server |
+| `--results` | Resultados en XML: los necesitas para generar correcciones en el Lab 4 |
+| `--report` | Reporte legible con explicación y corrección sugerida por regla |
 | `> antes.txt` | Resumen en texto para contar pass y fail |
 | `2>/dev/null` | Oculta las advertencias técnicas del escáner |
 
@@ -377,8 +489,8 @@ grep -c 'Result.*fail$' antes.txt
 Desde **Kali**:
 
 ```bash
-scp alumno@IP_UBUNTU:~/lab/antes.html .
-scp alumno@IP_UBUNTU:~/lab/lynis-antes.html .
+scp brian@IP_UBUNTU:/home/brian/antes.html .
+scp brian@IP_UBUNTU:/home/brian/lynis-antes.html .
 firefox antes.html lynis-antes.html &
 
 nmap -sV IP_UBUNTU -oN antes-nmap.txt
@@ -389,15 +501,15 @@ ssh-audit IP_UBUNTU > antes-ssh.txt
 - `nmap -sV` muestra los puertos abiertos y la versión de cada servicio: lo mismo que ve un atacante.
 - `ssh-audit` revisa la criptografía que ofrece el servidor SSH y marca en rojo los algoritmos débiles.
 
-> Si `ssh-audit` no está instalado: `sudo apt install -y ssh-audit`. Si `scp` falla por permisos, en Ubuntu ejecuta `sudo chown $USER ~/lab/*`.
+> Si `ssh-audit` no está instalado: `sudo apt install -y ssh-audit`. Si `scp` falla por permisos, en Ubuntu ejecuta `sudo chown brian /home/brian/*`.
 
 **Anota:** pass y fail de OpenSCAP, el porcentaje del reporte y los puertos que ve nmap.
 
 ---
 
-## Lab 3 · Hardening manual (45 min)
+## Lab 3 · Hardening manual (43 min)
 
-**Método:** en cada bloque lees la teoría, aplicas los comandos y verificas con `chk`. La regla debe pasar de `fail` a `pass`.
+**Método:** en cada bloque lees la teoría, aplicas los comandos y verificas con `oscap` como en el 0.3. La regla debe pasar de `fail` a `pass`.
 
 > **No cierres tu sesión SSH actual** mientras toques SSH, el firewall o PAM. Prueba siempre desde **otra** ventana. Si te quedas fuera, entra por la consola de VirtualBox.
 
@@ -437,20 +549,77 @@ PermitUserEnvironment no
 X11Forwarding no
 Banner /etc/issue.net
 EOF
-sudo chmod 600 /etc/ssh/sshd_config
+sudo chmod 600 /etc/ssh/sshd_config /etc/ssh/sshd_config.d/*.conf
 sudo sshd -t && sudo systemctl reload ssh
 ```
 
-`sshd -t` valida la sintaxis: no debe mostrar nada. Si muestra un error, corrígelo **antes** de recargar.
+`sshd -t` valida la sintaxis: no debe mostrar nada. Si muestra un error, corrígelo **antes** de recargar. El `chmod 600` deja la configuración de SSH legible solo por root, incluidos los archivos de `sshd_config.d/`: CIS revisa los dos.
 
 ```bash
-chk sshd_disable_root_login sshd_set_max_auth_tries sshd_disable_empty_passwords \
-    sshd_set_login_grace_time sshd_set_idle_timeout sshd_set_keepalive sshd_set_maxstartups \
-    sshd_set_max_sessions sshd_set_loglevel_info sshd_disable_rhosts \
-    sshd_do_not_permit_user_env file_permissions_sshd_config
+for r in \
+  sshd_disable_root_login \
+  sshd_set_max_auth_tries \
+  sshd_disable_empty_passwords \
+  sshd_set_login_grace_time \
+  sshd_set_idle_timeout \
+  sshd_set_keepalive \
+  sshd_set_maxstartups \
+  sshd_set_max_sessions \
+  sshd_set_loglevel_info \
+  sshd_disable_rhosts \
+  sshd_do_not_permit_user_env \
+  file_permissions_sshd_config \
+  file_permissions_sshd_drop_in_config; do
+  sudo oscap xccdf eval \
+    --profile xccdf_org.ssgproject.content_profile_cis_level1_server \
+    --rule xccdf_org.ssgproject.content_rule_$r \
+    /home/brian/ssg-ubuntu2204-ds.xml 2>/dev/null | grep -E '^(Title|Result)'
+done
 ```
 
-Desde **otra ventana**, comprueba que todavía entras: `ssh alumno@IP_UBUNTU`.
+Desde **otra ventana**, comprueba que todavía entras: `ssh brian@IP_UBUNTU`.
+
+### 3.1b Criptografía de SSH (3 min)
+
+**Teoría:** en el Lab 2, `ssh-audit` marcó en rojo los algoritmos débiles. Una conexión SSH negocia cuatro cosas, y en cada una se dejan solo las opciones modernas:
+
+| Directiva | Qué define |
+| --- | --- |
+| `KexAlgorithms` | Cómo se acuerda la llave de la sesión |
+| `Ciphers` | Cómo se cifran los datos |
+| `MACs` | Cómo se verifica que nadie los alteró |
+| `HostKeyAlgorithms` | Con qué llave se identifica el servidor. Se quita ECDSA, que `ssh-audit` marca en rojo por sus curvas NIST |
+
+Los clientes actuales (Kali, OpenSSH de Windows, PuTTY o MobaXterm recientes) soportan todos estos algoritmos. Un cliente muy antiguo podría no conectar: por eso se prueba desde otra ventana **antes** de cerrar la sesión actual.
+
+```bash
+sudo tee /etc/ssh/sshd_config.d/60-cripto.conf <<'EOF'
+KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512
+Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+HostKeyAlgorithms ssh-ed25519,rsa-sha2-512,rsa-sha2-256
+EOF
+sudo chmod 600 /etc/ssh/sshd_config.d/60-cripto.conf
+sudo sshd -t && sudo systemctl reload ssh
+```
+
+```bash
+for r in \
+  sshd_use_strong_kex \
+  sshd_use_strong_ciphers \
+  sshd_use_strong_macs; do
+  sudo oscap xccdf eval \
+    --profile xccdf_org.ssgproject.content_profile_cis_level1_server \
+    --rule xccdf_org.ssgproject.content_rule_$r \
+    /home/brian/ssg-ubuntu2204-ds.xml 2>/dev/null | grep -E '^(Title|Result)'
+done
+```
+
+Desde **otra ventana**, vuelve a entrar con `ssh brian@IP_UBUNTU`. Si conecta, ya puedes seguir.
+
+> Si el cliente avisa que **cambió la llave del servidor** (`REMOTE HOST IDENTIFICATION HAS CHANGED`), es porque antes usaba la llave ECDSA y ahora el servidor ofrece la ed25519. En ese caso es esperado: en el equipo cliente ejecuta `ssh-keygen -R IP_UBUNTU` y vuelve a conectar.
+
+> Después de este bloque, `ssh-audit` todavía muestra advertencias amarillas de que el intercambio de llaves *no protege contra ataques post-cuánticos*. OpenSSH 8.9 trae `sntrup761x25519-sha512@openssh.com`, que sí protege, pero **no está en la lista aprobada por CIS** para Ubuntu 22.04: si lo agregas, la regla `sshd_use_strong_kex` pasa a FAIL. Es un buen ejemplo de que dos estándares pueden no coincidir.
 
 ### 3.2 Firewall con salida restringida (6 min)
 
@@ -486,7 +655,15 @@ sudo ufw status verbose
 ```
 
 ```bash
-chk check_ufw_active set_ufw_default_rule set_ufw_loopback_traffic
+for r in \
+  check_ufw_active \
+  set_ufw_default_rule \
+  set_ufw_loopback_traffic; do
+  sudo oscap xccdf eval \
+    --profile xccdf_org.ssgproject.content_profile_cis_level1_server \
+    --rule xccdf_org.ssgproject.content_rule_$r \
+    /home/brian/ssg-ubuntu2204-ds.xml 2>/dev/null | grep -E '^(Title|Result)'
+done
 sudo apt update     # debe seguir funcionando
 ```
 
@@ -517,8 +694,19 @@ printf 'TMOUT=900\nreadonly TMOUT\nexport TMOUT\n' | sudo tee /etc/profile.d/60-
 ```
 
 ```bash
-chk accounts_maximum_age_login_defs accounts_password_warn_age_login_defs accounts_umask_etc_login_defs \
-    accounts_password_set_max_life_existing accounts_password_pam_minlen accounts_password_pam_minclass accounts_tmout
+for r in \
+  accounts_maximum_age_login_defs \
+  accounts_password_warn_age_login_defs \
+  accounts_umask_etc_login_defs \
+  accounts_password_set_max_life_existing \
+  accounts_password_pam_minlen \
+  accounts_password_pam_minclass \
+  accounts_tmout; do
+  sudo oscap xccdf eval \
+    --profile xccdf_org.ssgproject.content_profile_cis_level1_server \
+    --rule xccdf_org.ssgproject.content_rule_$r \
+    /home/brian/ssg-ubuntu2204-ds.xml 2>/dev/null | grep -E '^(Title|Result)'
+done
 ```
 
 **Prueba:** intenta cambiar tu contraseña a `Hola123` con `passwd`. Debe rechazarla.
@@ -550,7 +738,17 @@ sudo visudo -cf /etc/sudoers.d/50-hardening
 ```
 
 ```bash
-chk use_pam_wheel_group_for_su ensure_pam_wheel_group_empty sudo_add_use_pty sudo_custom_logfile sudo_require_reauthentication
+for r in \
+  use_pam_wheel_group_for_su \
+  ensure_pam_wheel_group_empty \
+  sudo_add_use_pty \
+  sudo_custom_logfile \
+  sudo_require_reauthentication; do
+  sudo oscap xccdf eval \
+    --profile xccdf_org.ssgproject.content_profile_cis_level1_server \
+    --rule xccdf_org.ssgproject.content_rule_$r \
+    /home/brian/ssg-ubuntu2204-ds.xml 2>/dev/null | grep -E '^(Title|Result)'
+done
 ```
 
 **Prueba:** `su -` ahora debe fallar aunque sepas la contraseña de root, y `sudo -i` debe seguir funcionando. Ejecuta `sudo ls` y revisa `sudo cat /var/log/sudo.log`.
@@ -588,31 +786,69 @@ fs.suid_dumpable = 0
 EOF
 
 # ¿Algún otro archivo dice lo contrario?
-grep -rn 'rp_filter' /etc/sysctl.d/ /etc/sysctl.conf | grep -v ':#'
+sudo grep -rn 'rp_filter' /etc/sysctl.d/ /etc/sysctl.conf | grep -v ':#'
 ```
 
-**Ojo:** Ubuntu trae `/etc/sysctl.d/10-network-security.conf` con `rp_filter=2`. Aunque tu archivo `60-` se aplica después, OpenSCAP marca FAIL si encuentra un valor contradictorio. Comenta esas líneas:
+**Ojo, hay dos archivos que contradicen tu configuración.** OpenSCAP marca FAIL si encuentra un valor contradictorio en cualquiera de ellos, aunque tu archivo `60-` se aplique después:
+
+| Archivo | Qué dice | Por qué importa |
+| --- | --- | --- |
+| `/etc/sysctl.d/10-network-security.conf` | `rp_filter=2` | Viene con Ubuntu |
+| `/etc/ufw/sysctl.conf` | `log_martians=0` | ufw lo aplica **cada vez que se activa o arranca**, y pisa tu valor |
 
 ```bash
+sudo grep -n 'log_martians' /etc/ufw/sysctl.conf
 sudo sed -i -E 's/^(net.ipv4.conf.(all|default).rp_filter\s*=\s*2)/# \1/' /etc/sysctl.d/10-network-security.conf
+sudo sed -i -E 's#^(net/ipv4/conf/(all|default)/log_martians)=0#\1=1#' /etc/ufw/sysctl.conf
+sudo grep -n 'log_martians' /etc/ufw/sysctl.conf
 sudo sysctl --system > /dev/null
 sysctl net.ipv4.conf.all.rp_filter kernel.randomize_va_space
 ```
 
+> Si `sysctl --system` muestra `Invalid argument` en claves que no escribiste (por ejemplo `promote_secondaries`), vienen de archivos del propio sistema y no afectan al laboratorio.
+
 ```bash
-chk sysctl_net_ipv4_conf_all_send_redirects sysctl_net_ipv4_conf_all_accept_redirects \
-    sysctl_net_ipv4_conf_all_log_martians sysctl_net_ipv4_conf_all_rp_filter sysctl_net_ipv4_tcp_syncookies \
-    sysctl_net_ipv4_icmp_ignore_bogus_error_responses sysctl_kernel_randomize_va_space \
-    sysctl_kernel_yama_ptrace_scope sysctl_fs_suid_dumpable
+for r in \
+  sysctl_net_ipv4_conf_all_send_redirects \
+  sysctl_net_ipv4_conf_all_accept_redirects \
+  sysctl_net_ipv4_conf_all_log_martians \
+  sysctl_net_ipv4_conf_all_rp_filter \
+  sysctl_net_ipv4_tcp_syncookies \
+  sysctl_net_ipv4_icmp_ignore_bogus_error_responses \
+  sysctl_kernel_randomize_va_space \
+  sysctl_kernel_yama_ptrace_scope \
+  sysctl_fs_suid_dumpable; do
+  sudo oscap xccdf eval \
+    --profile xccdf_org.ssgproject.content_profile_cis_level1_server \
+    --rule xccdf_org.ssgproject.content_rule_$r \
+    /home/brian/ssg-ubuntu2204-ds.xml 2>/dev/null | grep -E '^(Title|Result)'
+done
 ```
 
-### 3.6 Volcados de memoria (core dumps) (2 min)
+### 3.6 Volcados de memoria (core dumps) (3 min)
 
 **Teoría:** cuando un programa se cae, puede escribir su memoria en un archivo "core". Esa memoria puede contener contraseñas, llaves o datos de clientes. En producción se desactiva.
 
+Ubuntu trae **apport**, que recoge esos volcados para enviar reportes de errores. Cada vez que arranca, apport vuelve a poner `fs.suid_dumpable = 2` y **deshace** lo que configuraste en el 3.5. Por eso CIS pide enmascararlo (*mask*): un servicio enmascarado no puede arrancar, ni siquiera si otro servicio lo pide.
+
 ```bash
 echo '* hard core 0' | sudo tee /etc/security/limits.d/60-nocore.conf
-chk disable_users_coredumps
+sudo systemctl stop apport
+sudo systemctl mask apport
+sudo sysctl --system > /dev/null
+sysctl fs.suid_dumpable
+```
+
+```bash
+for r in \
+  disable_users_coredumps \
+  service_apport_disabled \
+  sysctl_fs_suid_dumpable; do
+  sudo oscap xccdf eval \
+    --profile xccdf_org.ssgproject.content_profile_cis_level1_server \
+    --rule xccdf_org.ssgproject.content_rule_$r \
+    /home/brian/ssg-ubuntu2204-ds.xml 2>/dev/null | grep -E '^(Title|Result)'
+done
 ```
 
 ### 3.7 Paquetes innecesarios (3 min)
@@ -622,12 +858,20 @@ chk disable_users_coredumps
 ```bash
 dpkg -l rsync telnet ftp 2>/dev/null | grep ^ii
 sudo apt purge -y rsync telnet ftp 2>/dev/null
-chk package_rsync_removed package_telnet_removed package_ftp_removed
+for r in \
+  package_rsync_removed \
+  package_telnet_removed \
+  package_ftp_removed; do
+  sudo oscap xccdf eval \
+    --profile xccdf_org.ssgproject.content_profile_cis_level1_server \
+    --rule xccdf_org.ssgproject.content_rule_$r \
+    /home/brian/ssg-ubuntu2204-ds.xml 2>/dev/null | grep -E '^(Title|Result)'
+done
 ```
 
-**Teoría de la herramienta:** `apt purge` borra el paquete **y** sus archivos de configuración. `apt remove` deja la configuración.
+**Teoría de la herramienta:** `apt purge` borra el paquete **y** sus archivos de configuración. `apt remove` deja la configuración. Verás que apt también quita `ubuntu-standard`: es un *metapaquete* que solo agrupa paquetes, y borrarlo no quita nada más.
 
-### 3.8 Permisos de archivos críticos (3 min)
+### 3.8 Permisos de archivos críticos (2 min)
 
 **Teoría:** las tareas de `cron` corren como root. Si un usuario normal puede leer `/etc/crontab` o las carpetas `cron.*`, ve qué scripts se ejecutan y cuándo: el mapa perfecto para plantar código. CIS pide que solo root las vea (CIS Control 3.3).
 
@@ -635,12 +879,21 @@ chk package_rsync_removed package_telnet_removed package_ftp_removed
 ls -ld /etc/crontab /etc/cron.d /etc/cron.daily
 sudo chmod og-rwx /etc/crontab /etc/cron.d /etc/cron.hourly /etc/cron.daily /etc/cron.weekly /etc/cron.monthly
 ls -ld /etc/crontab /etc/cron.d /etc/cron.daily
-chk file_permissions_crontab file_permissions_cron_d file_permissions_cron_daily file_permissions_etc_shadow
+for r in \
+  file_permissions_crontab \
+  file_permissions_cron_d \
+  file_permissions_cron_daily \
+  file_permissions_etc_shadow; do
+  sudo oscap xccdf eval \
+    --profile xccdf_org.ssgproject.content_profile_cis_level1_server \
+    --rule xccdf_org.ssgproject.content_rule_$r \
+    /home/brian/ssg-ubuntu2204-ds.xml 2>/dev/null | grep -E '^(Title|Result)'
+done
 ```
 
 **Teoría de la herramienta:** `og-rwx` quita lectura, escritura y ejecución al grupo (`g`) y a otros (`o`). El dueño, root, conserva sus permisos.
 
-### 3.9 Banners de aviso legal (3 min)
+### 3.9 Banners de aviso legal (2 min)
 
 **Teoría:** el banner cumple dos funciones:
 - **Legal:** advierte que el acceso es monitoreado, lo que respalda acciones legales contra un intruso.
@@ -649,7 +902,15 @@ chk file_permissions_crontab file_permissions_cron_d file_permissions_cron_daily
 ```bash
 cat /etc/issue /etc/issue.net
 echo "Acceso autorizado unicamente. Toda la actividad es monitoreada y registrada." | sudo tee /etc/issue /etc/issue.net
-chk banner_etc_issue_cis banner_etc_issue_net_cis sshd_enable_warning_banner_net
+for r in \
+  banner_etc_issue_cis \
+  banner_etc_issue_net_cis \
+  sshd_enable_warning_banner_net; do
+  sudo oscap xccdf eval \
+    --profile xccdf_org.ssgproject.content_profile_cis_level1_server \
+    --rule xccdf_org.ssgproject.content_rule_$r \
+    /home/brian/ssg-ubuntu2204-ds.xml 2>/dev/null | grep -E '^(Title|Result)'
+done
 ```
 
 Desde otra ventana conéctate por SSH: debes ver el aviso antes de que te pida la contraseña.
@@ -658,15 +919,24 @@ Desde otra ventana conéctate por SSH: debes ver el aviso antes de que te pida l
 
 **Teoría:** sin logs no hay investigación de incidentes (CIS Control 8.2). `Storage=persistent` guarda el journal en disco y `Compress=yes` lo comprime para que ocupe menos.
 
+> En la verificación, las dos reglas salen `notapplicable`. Es correcto: Ubuntu usa **rsyslog** además de journald, y CIS solo exige estas reglas cuando journald es el único sistema de registro. Se aplican igual porque son buena práctica y Lynis sí las valora.
+
 ```bash
 sudo mkdir -p /etc/systemd/journald.conf.d
 printf '[Journal]\nStorage=persistent\nCompress=yes\n' | sudo tee /etc/systemd/journald.conf.d/60-hardening.conf
 sudo systemctl restart systemd-journald
 ls -d /var/log/journal
-chk journald_storage journald_compress
+for r in \
+  journald_storage \
+  journald_compress; do
+  sudo oscap xccdf eval \
+    --profile xccdf_org.ssgproject.content_profile_cis_level1_server \
+    --rule xccdf_org.ssgproject.content_rule_$r \
+    /home/brian/ssg-ubuntu2204-ds.xml 2>/dev/null | grep -E '^(Title|Result)'
+done
 ```
 
-### 3.11 Actualizaciones automáticas de seguridad (3 min)
+### 3.11 Actualizaciones automáticas de seguridad (2 min)
 
 **Teoría:** CIS Control 7.3 pide parchar el sistema operativo de forma automática. `unattended-upgrades` instala solo las actualizaciones de **seguridad**, que son las de menor riesgo de romper algo. Esta regla no está en el perfil de OpenSCAP, pero Lynis sí la evalúa.
 
@@ -697,7 +967,10 @@ sudo ausearch -k identidad -i | tail -n 5
 AppArmor:
 ```bash
 sudo aa-status | grep -E 'profiles are in (enforce|complain) mode'
-chk all_apparmor_profiles_in_enforce_complain_mode
+sudo oscap xccdf eval \
+  --profile xccdf_org.ssgproject.content_profile_cis_level1_server \
+  --rule xccdf_org.ssgproject.content_rule_all_apparmor_profiles_in_enforce_complain_mode \
+  /home/brian/ssg-ubuntu2204-ds.xml 2>/dev/null | grep -E '^(Title|Result)'
 ```
 
 ---
@@ -709,7 +982,7 @@ chk all_apparmor_profiles_in_enforce_complain_mode
 Es potente, pero **ciego**: aplica la regla tal como la escribió CIS, sin saber si tu servidor la necesita. Por eso **primero se lee y después se ejecuta**.
 
 ```bash
-cd ~/lab
+cd /home/brian
 oscap xccdf generate fix --fix-type bash --result-id "" antes.xml > fix.sh
 grep -c 'BEGIN fix' fix.sh                # cuántas correcciones trae
 grep 'BEGIN fix' fix.sh | less            # cuáles son (q para salir)
@@ -720,33 +993,61 @@ grep 'BEGIN fix' fix.sh | less            # cuáles son (q para salir)
 **Detente y busca en el script** las correcciones que pueden afectar el acceso:
 
 ```bash
-grep -nE 'BEGIN fix.*(faillock|ufw|sshd|pam|apparmor|grub)' fix.sh
+grep -nE 'BEGIN fix.*(faillock|ufw|nftables|iptables|journald|sshd|pam|apparmor|grub|aide)' /home/brian/fix.sh
 ```
 
 | Si ves... | Riesgo |
 | --- | --- |
-| `faillock` | Bloquea la cuenta tras varios intentos fallidos: puedes bloquearte tú mismo |
-| `ufw` | Cambia reglas del firewall que ya ajustaste a mano |
+| `package_ufw_removed` | **Desinstala ufw.** El perfil acepta ufw, nftables o iptables, y su valor por defecto es nftables. Deshace todo el bloque 3.2 y deja el servidor sin firewall |
+| `nftables` / `iptables` | Correcciones para los otros firewalls, que tú no elegiste |
+| `journald_disable_forward_to_syslog` | journald deja de pasarle los eventos a rsyslog: `/var/log/auth.log` y `/var/log/syslog` dejan de crecer. CIS lo pide solo si usas journald **en lugar de** rsyslog, y Ubuntu usa los dos |
+| `faillock` | Bloquea la cuenta 15 minutos tras 4 contraseñas fallidas: puedes bloquearte tú mismo |
 | `sshd` | Cambia la configuración de SSH |
 | `grub` | Pide contraseña al arrancar o cambia la configuración de arranque |
+| `aide` | Instala AIDE y, de paso, **postfix**, un servidor de correo que queda escuchando en todas las interfaces (puerto 25). Además, crear la base de datos de AIDE tarda bastante y parece que el script se detuvo |
 
-> **Toma un SNAPSHOT de la VM ahora.**
+**Quita del script las correcciones que no corresponden a tus decisiones (usar ufw y mantener rsyslog) y las de AIDE, que se instalan aparte (ver la tarea al final del Lab 5):**
 
 ```bash
-sudo bash fix.sh 2>&1 | tee fix.log
-grep -ciE 'error|fail' fix.log
+awk '/^# BEGIN fix .*(package_ufw_removed|_nftables_|nftables_|_iptables|iptables_|journald_disable_forward_to_syslog|aide_)/{skip=1} !skip{print} /^# END fix for/{skip=0}' /home/brian/fix.sh > /home/brian/fix-seguro.sh
+grep -c 'BEGIN fix' /home/brian/fix.sh /home/brian/fix-seguro.sh
+grep -E 'BEGIN fix.*(ufw|nftables|iptables|journald|aide)' /home/brian/fix-seguro.sh
 ```
+
+**Teoría:** cada corrección del script empieza con `# BEGIN fix` y termina con `# END fix for`. El `awk` copia el archivo completo, pero se salta los bloques cuyo nombre coincide con la lista: la que desinstala ufw, las de nftables e iptables, la que corta el paso de eventos de journald a rsyslog y las de AIDE. La segunda línea muestra cuántas correcciones quedaron en cada archivo; la tercera debe listar **solo** reglas de ufw. En una auditoría real esto se llama **adaptar el benchmark a tu decisión de arquitectura**, en lugar de aplicarlo a ciegas.
+
+> **Sobre faillock:** esa corrección se queda en el script, porque es un control válido. Desde que lo ejecutes, **4 contraseñas incorrectas bloquean la cuenta durante 15 minutos.** Si te pasa, entra por la consola de VirtualBox y ejecuta `sudo faillock --user brian --reset`.
+
+> **Toma un SNAPSHOT de la VM ahora** y **no cierres tu sesión SSH actual.**
+
+```bash
+sudo bash /home/brian/fix-seguro.sh 2>&1 | tee /home/brian/fix.log
+grep -ciE 'error|fail' /home/brian/fix.log
+```
+
+**Comprueba que no perdiste nada:**
+
+```bash
+sudo ufw status verbose          # debe seguir "Status: active" con tus reglas
+sudo sshd -t && echo "SSH OK"
+sudo ss -tlnp | grep ':25 ' || echo "Sin servidor de correo escuchando"
+```
+
+Desde **otra ventana**, entra con `ssh brian@IP_UBUNTU`. Solo cuando conecte, cierra la sesión anterior.
 
 ---
 
-## Lab 5 · Volver a medir y comparar (20 min)
+## Lab 5 · Volver a medir y comparar (17 min)
 
 ### 5.1 OpenSCAP "después" (6 min)
 
 ```bash
-cd ~/lab
-sudo oscap xccdf eval --profile $P \
-  --results despues.xml --report despues.html $DS > despues.txt 2>/dev/null
+cd /home/brian
+sudo oscap xccdf eval \
+  --profile xccdf_org.ssgproject.content_profile_cis_level1_server \
+  --results /home/brian/despues.xml \
+  --report /home/brian/despues.html \
+  /home/brian/ssg-ubuntu2204-ds.xml > /home/brian/despues.txt 2>/dev/null
 grep -c 'Result.*pass$' despues.txt
 grep -c 'Result.*fail$' despues.txt
 awk -F'\t' '/^Title/{t=$2} /^Result/ && $2=="fail"{print t}' despues.txt   # qué sigue en FAIL
@@ -755,8 +1056,8 @@ awk -F'\t' '/^Title/{t=$2} /^Result/ && $2=="fail"{print t}' despues.txt   # qu�
 ### 5.2 Lynis "después" y comparación en HTML (6 min)
 
 ```bash
-sudo ~/lynis/lynis audit system --quick \
-  --report-file ~/lab/lynis-despues.dat --log-file ~/lab/lynis-despues.log
+sudo lynis audit system --quick \
+  --report-file /home/brian/lynis-despues.dat --log-file /home/brian/lynis-despues.log
 
 sudo python3 lynis2html.py lynis-antes.dat lynis-despues.dat -o lynis-comparacion.html
 ```
@@ -769,27 +1070,9 @@ sudo python3 lynis2html.py lynis-antes.dat lynis-despues.dat -o lynis-comparacio
 | **Nuevos** | No estaban antes. Suelen salir porque ahora Lynis puede revisar algo que antes no existía, por ejemplo reglas de auditd |
 | **Pendientes** | Siguen ahí: corrígelos o justifícalos como riesgo aceptado |
 
-### 5.3 Criptografía de SSH y vista desde afuera (8 min)
+> Lynis y CIS **no siempre coinciden**. Por ejemplo, después del bloque 3.1 Lynis sugiere `MaxAuthTries 3`, mientras CIS pide 4 o menos. Ninguno está mal: son criterios distintos. En una auditoría manda el estándar que la organización adoptó.
 
-**Teoría:** `ssh-audit` marcó en rojo los algoritmos débiles. Una conexión SSH negocia tres cosas, y en cada una se dejan solo las opciones modernas:
-
-| Directiva | Qué define |
-| --- | --- |
-| `KexAlgorithms` | Cómo se acuerda la llave de la sesión |
-| `Ciphers` | Cómo se cifran los datos |
-| `MACs` | Cómo se verifica que nadie los alteró |
-
-En el **Ubuntu**:
-
-```bash
-sudo tee /etc/ssh/sshd_config.d/60-cripto.conf <<'EOF'
-KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org,diffie-hellman-group16-sha512,diffie-hellman-group18-sha512
-Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr
-MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
-EOF
-sudo sshd -t && sudo systemctl reload ssh
-chk sshd_use_strong_kex sshd_use_strong_ciphers sshd_use_strong_macs
-```
+### 5.3 Vista desde afuera con Kali (5 min)
 
 Desde **Kali**:
 
@@ -798,14 +1081,31 @@ ssh-audit IP_UBUNTU > despues-ssh.txt
 nmap -sV IP_UBUNTU -oN despues-nmap.txt
 diff antes-nmap.txt despues-nmap.txt
 
-scp alumno@IP_UBUNTU:~/lab/despues.html .
-scp alumno@IP_UBUNTU:~/lab/lynis-comparacion.html .
+scp brian@IP_UBUNTU:/home/brian/despues.html .
+scp brian@IP_UBUNTU:/home/brian/lynis-comparacion.html .
 firefox despues.html lynis-comparacion.html &
 ```
 
 ¿Hay menos rojo en `ssh-audit`? ¿nmap ve menos puertos?
 
-### 5.4 Preguntas para tu entrega
+### 5.4 Tarea para casa: AIDE
+
+AIDE guarda una "foto" de los archivos del sistema y avisa si algo cambia (CIS lo pide en el Nivel 1). Para enviar sus avisos por correo, AIDE **siempre** instala un servidor de correo (postfix). La clave es configurarlo como **solo local**, para que no quede escuchando en la red:
+
+```bash
+echo "postfix postfix/main_mailer_type select Local only" | sudo debconf-set-selections
+sudo DEBIAN_FRONTEND=noninteractive apt install -y aide
+sudo ss -tlnp | grep ':25 '            # debe decir 127.0.0.1, no 0.0.0.0
+sudo aideinit -y -f                    # crea la base de datos: tarda varios minutos
+sudo ls -lh /var/lib/aide/
+```
+
+**Teoría:**
+- `debconf-set-selections` deja respondida de antemano la pregunta que haría el instalador de postfix. "Local only" significa que solo entrega correo a usuarios del propio servidor.
+- `DEBIAN_FRONTEND=noninteractive` hace que apt no muestre pantallas de configuración y use las respuestas guardadas.
+- `aideinit` recorre el disco y guarda la suma de verificación de cada archivo vigilado. Después, `sudo aide --check -c /etc/aide/aide.conf` compara el sistema actual con esa foto.
+
+### 5.5 Preguntas para tu entrega
 
 1. ¿Cuántas reglas pasaron antes y después en OpenSCAP? ¿Cuánto subió el Hardening index de Lynis?
 2. ¿Por qué los dos números no suben igual? Pista: uno mide cumplimiento CIS y el otro buenas prácticas generales.
@@ -821,10 +1121,10 @@ firefox despues.html lynis-comparacion.html &
 
 Archivo: `entregas/clase-03/<tu-apellido>.md`
 
-- [ ] Respuestas del Lab 1 (22 preguntas, una línea cada una).
+- [ ] Respuestas del Lab 1 y Lab 1b (35 preguntas, una línea cada una).
 - [ ] Puntaje OpenSCAP **antes** y **después** (pass / fail).
 - [ ] Hardening index de Lynis antes y después, con capturas de `lynis-comparacion.html`.
-- [ ] 6 bloques del Lab 3 explicados: qué cambiaste, por qué, y el resultado de `chk`.
+- [ ] 6 bloques del Lab 3 explicados: qué cambiaste, por qué, y el resultado del `oscap` de verificación.
 - [ ] 1 regla que quedó en FAIL y por qué se acepta.
 - [ ] Extracto de `ssh-audit` antes y después.
 - [ ] Respuestas de la sección 5.4.
@@ -838,14 +1138,19 @@ Archivo: `entregas/clase-03/<tu-apellido>.md`
 | `grep -E` no muestra nada | Pusiste barra invertida antes de la barra vertical | Con `-E`, el "o" va sin barra invertida (ver el comando 10) |
 | Decenas de `Obtrusive data from probe!` | Advertencias de oscap 1.2.17 | Inofensivas: usa `2>/dev/null` |
 | `echo $?` da `2` | Hay reglas en FAIL | Es lo esperado |
-| `chk: command not found` | Cerraste la terminal | Vuelve a pegar el bloque 0.3 |
-| `oscap ... Unable to open file` | No estás en `~/lab` o la ruta de `$DS` es incorrecta | Ejecuta `ls -lh $DS` |
-| Lynis pide cambiar el dueño de sus archivos | Lo clonaste como usuario normal | `sudo chown -R root:root ~/lynis` |
-| `apt update` o `git clone` no conectan | El firewall bloquea la salida | Revisa las reglas `allow out` del 3.2: DNS 53, 80 y 443 |
-| Me quedé fuera por SSH | ufw activado sin permitir SSH, o error en `sshd` | Entra por la consola de VirtualBox o vuelve al snapshot |
+| `oscap ... Unable to open file` | El datastream no está en `/home/brian` | Ejecuta `ls -lh /home/brian/ssg-ubuntu2204-ds.xml` |
+| `apt update` no conecta | El firewall bloquea la salida | Revisa las reglas `allow out` del 3.2: DNS 53, 80 y 443 |
+| Me quedé fuera por SSH | ufw activado sin permitir SSH, error en `sshd`, o intentaste entrar como root | Entra como `brian` (root ya no puede por SSH); si no, por la consola de VirtualBox o vuelve al snapshot |
+| La terminal se cierra sola | `TMOUT=900` del bloque 3.3: 15 minutos sin escribir | Es el control funcionando. Vuelve a entrar |
+| El cliente SSH no conecta tras el 3.1b | Cliente muy antiguo sin algoritmos modernos | Actualiza PuTTY o MobaXterm, o usa el OpenSSH de Windows o Kali |
 | `sshd -t` muestra un error | Error de tipeo en el `.conf` | Corrige y vuelve a probar antes de recargar |
 | `su -` ya no funciona | Es el efecto del 3.4: el grupo `sugroup` está vacío | Usa `sudo -i` |
 | `rp_filter` sigue en FAIL | Otro archivo de `sysctl.d` dice `rp_filter=2` | Repite el `grep` del 3.5 y comenta esa línea |
+| `log_martians` sigue en FAIL | `/etc/ufw/sysctl.conf` dice `log_martians=0` | Aplica el segundo `sed` del 3.5 |
 | `scp` no conecta desde Kali | IP equivocada o ufw | Revisa `ip -br a` y `sudo ufw status` |
-| `scp` da *Permission denied* | Los reportes los creó root | En Ubuntu: `sudo chown $USER ~/lab/*` |
-| Me bloqueé tras fallar la contraseña | La corrección de `faillock` del Lab 4 | Espera el tiempo de desbloqueo o, desde la consola: `sudo faillock --user alumno --reset` |
+| `scp` da *Permission denied* | Los reportes los creó root | En Ubuntu: `sudo chown brian /home/brian/*` |
+| Me bloqueé tras fallar la contraseña | La corrección de `faillock` del Lab 4 (4 intentos, 15 min) | Espera 15 minutos o, desde la consola de VirtualBox: `sudo faillock --user brian --reset` |
+| Después del Lab 4 aparece el puerto 25 | Ejecutaste `fix.sh` completo y AIDE instaló postfix | `sudo postconf -e 'inet_interfaces = loopback-only'` y `sudo systemctl restart postfix` |
+| `fs.suid_dumpable` vuelve a `2` tras reiniciar | apport lo cambia al arrancar | Repite el 3.6: `sudo systemctl mask apport` |
+| `/var/log/auth.log` dejó de crecer | Ejecutaste `fix.sh` completo: journald ya no le pasa eventos a rsyslog | `sudo sed -i '/^ForwardToSyslog=no/d' /etc/systemd/journald.conf /etc/systemd/journald.conf.d/60-hardening.conf` y `sudo systemctl restart systemd-journald` |
+| Después del Lab 4, `ufw` ya no existe | Ejecutaste `fix.sh` en vez de `fix-seguro.sh` | Vuelve al snapshot, o reinstala con `sudo apt install -y ufw` y repite el bloque 3.2 |
