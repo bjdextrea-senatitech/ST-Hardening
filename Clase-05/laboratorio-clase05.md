@@ -1,16 +1,5 @@
 # Clase 5 · Laboratorio — Firewalls: del host al perímetro
 
-**SENATI · Diplomado Gestión de la Ciberseguridad · Módulo 04 "Aseguramiento de los Sistemas"**
-**Docente:** Ademir Cuadros · **Duración de la práctica:** 2 horas (+ B5 Suricata opcional / tarea)
-
-> Mismo ciclo de siempre: **medir → endurecer → re-medir → mirar desde afuera**, ahora en dos niveles:
-> - **Parte A · Firewall de host:** el propio Ubuntu se defiende con **iptables** y luego con **firewalld**.
-> - **Parte B · Firewall perimetral:** **pfSense** protege redes enteras, y además hay que protegerlo a él. Un firewall mal configurado no solo deja pasar ataques: **es** el blanco. Los incidentes de 2024–2025 en Fortinet, Palo Alto e Ivanti empezaron por la interfaz de administración o la VPN expuestas.
->
-> **Hilo conductor:** una sola **batería de pruebas desde Kali** (`pruebas-firewall.sh`) que se ejecuta **5 veces**: sin firewall → iptables → firewalld → pfSense antes → pfSense después. Al final, una tabla compara las 5 columnas.
-
----
-
 ## Antes de empezar (leer 1 minuto)
 
 - **Tarea previa:** tener pfSense CE 2.8.x instalado (ver **Anexo A**). Si no lo hiciste, instálalo mientras los demás hacen la Parte A (no la necesita).
