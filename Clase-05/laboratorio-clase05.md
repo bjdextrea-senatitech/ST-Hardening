@@ -1,8 +1,19 @@
 # Clase 5 · Laboratorio — Firewalls: del host al perímetro
 
+**SENATI · Diplomado Gestión de la Ciberseguridad · Módulo 04 "Aseguramiento de los Sistemas"**
+**Docente:** Ademir Cuadros · **Duración de la práctica:** 2 horas (+ B5 Suricata opcional / tarea)
+
+> Mismo ciclo de siempre: **medir → endurecer → re-medir → mirar desde afuera**, ahora en dos niveles:
+> - **Parte A · Firewall de host:** el propio Ubuntu se defiende con **iptables** y luego con **firewalld**.
+> - **Parte B · Firewall perimetral:** **pfSense** protege redes enteras, y además hay que protegerlo a él. Un firewall mal configurado no solo deja pasar ataques: **es** el blanco. Los incidentes de 2024–2025 en Fortinet, Palo Alto e Ivanti empezaron por la interfaz de administración o la VPN expuestas.
+>
+> **Hilo conductor:** una sola **batería de pruebas desde Kali** (`pruebas-firewall.sh`) que se ejecuta **5 veces**: sin firewall → iptables → firewalld → pfSense antes → pfSense después. Al final, una tabla compara las 5 columnas.
+
+---
+
 ## Antes de empezar (leer 1 minuto)
 
-- **Tarea previa:** tener pfSense CE 2.8.x instalado (ver **Anexo A**). Si no lo hiciste, instálalo mientras los demás hacen la Parte A (no la necesita).
+- **Tarea previa:** tener pfSense CE 2.9.x instalado con dos tarjetas de red, WAN y LAN (ver **Anexo A** y la *Guía de instalación de pfSense CE en VirtualBox*). La tercera (DMZ) se agrega en B0.1. Si el docente reparte la OVA ya instalada, solo impórtala. Si no la tienes, instálala mientras los demás hacen la Parte A (no la necesita).
 - Usamos **3 VMs** (≈ 6 GB de RAM): **pfSense** (1 GB; 2 GB si harás B5), **Ubuntu** de las clases 3 y 4 (2 GB) y **Kali** (2–3 GB). En la Parte A, pfSense puede estar apagado.
 - El **PC físico** (tu Windows/Linux) es el **PC del administrador**: desde él entras por SSH al Ubuntu y manejas la GUI de pfSense. **No administres desde Kali:** Kali es el atacante.
 - Reemplaza **`IP_UBUNTU`** (Parte A), **`IP_WAN_PF`** (IP WAN que pfSense recibe por DHCP) e **`IP_KALI`** por tus valores.
@@ -35,7 +46,7 @@
                         │ WAN (em0, DHCP → IP_WAN_PF)
                  ┌──────┴───────┐
    PC admin ─────┤   pfSense    ├────── DMZ (em2) 172.16.20.0/24
- 192.168.56.1    │  CE 2.8.x    │       red interna "dmz-senati"
+ 192.168.56.1    │  CE 2.9.x    │       red interna "dmz-senati"
    LAN (em1)     └──────────────┘       │
  Host-Only 192.168.56.0/24              ┌┴──────────────────────────┐
  pfSense = 192.168.56.10                │ Ubuntu 22.04 (C3/C4)      │
@@ -676,6 +687,10 @@ sudo nmap -sU -p 161 --script snmp-info,snmp-interfaces 172.16.20.1
 
 **Referencia (config de ejemplo `ejemplos/config-ejemplo-inseguro.xml`):** 5 PASS · 21 FAIL (15 obligatorios) · **19 %**.
 
+**Referencia real (pfSense CE 2.9.0 recién instalado, sin los errores de B0.4, probado el 28/10/2026):** 13 PASS · 12 FAIL (8 obligatorios) · 1 EXC · **52 %**. Con los errores de B0.4 el resultado baja.
+
+> **ADM-04 en 2.9.x:** el certificado de fábrica ahora se llama `GUI default (…)` y la versión actual del auditor puede marcarlo como PASS. Si el detalle dice `GUI default`, cuéntalo como **FAIL** y corrígelo en B2.2.
+
 ---
 
 ## B2 · Hardening del equipo (25 min · B2.2 y B2.7 pasan a tarea si vas corto)
@@ -701,6 +716,7 @@ sudo nmap -sU -p 161 --script snmp-info,snmp-interfaces 172.16.20.1
 Primero **creas** la regla que te deja entrar, **después** quitas la anti-bloqueo:
 
 1. `Firewall › Aliases › IP › Add`: Name `ADMIN_PC`, Type **Host(s)**, IP `192.168.56.1`, descripción `PC del administrador` → Save → Apply.
+   > La IP de `ADMIN_PC` debe ser **la de tu PC en la LAN** (en la topología del lab, 192.168.56.1). Compruébala con `ipconfig` / `ip a` antes de seguir: si pones otra y desactivas la anti-bloqueo, te quedas fuera.
 2. `Firewall › Rules › LAN › Add` (flecha hacia **arriba**, para que quede primera): Pass · TCP · Source **Address or Alias `ADMIN_PC`** · Destination **This Firewall (self)** · puerto **HTTPS (443)** · descripción `GUI solo desde el PC admin` → Save → Apply.
 3. `System › Advanced › Admin Access`:
    - Marca **Anti-lockout: Disable webConfigurator anti-lockout rule**.
@@ -1004,6 +1020,7 @@ curl -sk -A "Nikto" https://IP_WAN_PF:2222/ -m 3
 | Síntoma | Causa | Solución |
 |---|---|---|
 | Al arrancar el ISO: `CPU doesn't support long mode` y prompt `OK` | La VM está en **32 bits**; pfSense solo funciona en 64 | Tipo **BSD**, versión **FreeBSD (64-bit)** y **PAE/NX** activado. Si no aparecen versiones de 64 bits: VT-x/AMD-V en la BIOS; en Windows desactiva *Integridad de memoria* y ejecuta `bcdedit /set hypervisorlaunchtype off` (PowerShell admin) y reinicia |
+| Entras a la GUI por una IP 192.168.0.x o tu red de casa recibe IPs raras | Un adaptador de pfSense quedó en "Adaptador puente" (con el DHCP de la LAN activo) | WAN en Red NAT `LabSENATI` y LAN en Solo-anfitrión; consola opción 2 para la LAN 192.168.56.10 sin DHCP |
 | El PC no llega a 192.168.56.10 | El adaptador Host-Only tiene DHCP de VirtualBox o tu PC no es .1 | Herramientas › Red › Host-Only: desactiva DHCP; revisa la IP del adaptador en el PC |
 | Me quedé fuera de la GUI al desactivar la anti-bloqueo | La regla `GUI solo desde el PC admin` no estaba primero o el alias tiene otra IP | Consola › opción **8 (Shell)** → `pfctl -d` (apaga el filtrado temporalmente), corrige la regla y luego `pfctl -e`. O restaura el snapshot |
 | La GUI dice "Login protection: blocked" | Superaste el umbral de 10 intentos | Espera 10 min o en la consola: opción 8 (Shell) → `pfctl -t sshguard -T flush` |
@@ -1018,18 +1035,23 @@ curl -sk -A "Nikto" https://IP_WAN_PF:2222/ -m 3
 
 ---
 
-## Anexo A · Instalación de pfSense CE 2.8.x (tarea previa, 15 min)
+## Anexo A · Instalación de pfSense CE 2.9.x (tarea previa)
 
-1. Descarga el instalador desde `https://www.pfsense.org/download/` (Netgate pide crear una cuenta gratuita y "comprar" la edición CE a $0). El archivo `netgate-installer-v1.2-RELEASE-amd64.iso.gz` es el **instalador en línea**: descomprímelo (7-Zip en Windows, `gunzip` en Linux) y ten en cuenta que descarga pfSense CE durante la instalación, así que la WAN (red NAT) necesita salida a internet.
-2. VirtualBox › Nueva: tipo **BSD**, versión **FreeBSD (64-bit)** (si eliges 32 bits verás `CPU doesn't support long mode`), 1 GB RAM, disco 16 GB, 1 CPU, y en Sistema › Procesador marca **PAE/NX**.
-3. Red: Adaptador 1 **Red NAT `LabSENATI`**, Adaptador 2 **Solo-anfitrión**, Adaptador 3 **Red interna `dmz-senati`** (los tres tipo Intel PRO/1000 → `em0`, `em1`, `em2`).
-4. Arranca el ISO → acepta → **Install CE** → WAN `em0` (DHCP), LAN `em1` → ZFS por defecto → reinicia y quita el ISO.
-5. En la consola verás el menú con las opciones 0–16. Sigue con el **B0.1**.
+La guía completa paso a paso está en la *Guía de instalación de pfSense CE en VirtualBox (2 NIC)*. Resumen:
+
+1. Crea en VirtualBox la **Red NAT `LabSENATI`** (10.0.2.0/24, con DHCP) y la **red Solo-anfitrión** 192.168.56.1/24 **sin DHCP**.
+2. VM nueva: tipo **BSD**, versión **FreeBSD (64-bit)** (con 32 bits verás `CPU doesn't support long mode`), 1 GB de RAM, disco de 16 GB, 1 CPU, **PAE/NX** activado.
+3. **Dos tarjetas de red para instalar**: Adaptador 1 → Red NAT `LabSENATI` (WAN, `em0`); Adaptador 2 → Solo-anfitrión (LAN, `em1`). Ambas Intel PRO/1000 MT Desktop. **Nunca en "Adaptador puente".**
+4. El ISO `netgate-installer-v1.2-RELEASE-amd64.iso.gz` es el **instalador en línea**: descomprímelo; durante la instalación descarga pfSense, así que la WAN necesita internet.
+5. Instalador: acepta la licencia → Install → WAN `em0` por DHCP → LAN `em1` estática 192.168.56.10/24 → **Install CE** → versión 2.9.0 → ZFS → reinicia y quita el ISO.
+6. Para la Parte B, con la VM **apagada**, agrega el Adaptador 3 → Red interna `dmz-senati` y sigue con B0.1.
+
+**Alternativa sin instalar:** importa la OVA que reparte el docente (**Archivo › Importar servicio virtualizado**, con nuevas direcciones MAC) y revisa que los adaptadores apunten a tus redes `LabSENATI` y Solo-anfitrión.
 
 ### Referencias
 
 - Netgate — pfSense Hardening y documentación: docs.netgate.com/pfsense
-- pfSense CE 2.8.x release notes: docs.netgate.com/pfsense/en/latest/releases/
+- pfSense CE 2.9.0 release notes: docs.netgate.com/pfsense/en/latest/releases/2-9-0.html
 - CISA — Known Exploited Vulnerabilities Catalog: cisa.gov/known-exploited-vulnerabilities-catalog
 - NIST SP 800-41 Rev. 1 — Guidelines on Firewalls and Firewall Policy
 - Lineamiento interno **BB-LIN-SEG-04 Firewall** (plantillas BurgerBank del curso).
