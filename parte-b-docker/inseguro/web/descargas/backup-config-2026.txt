@@ -1,0 +1,5 @@
+# Respaldo de configuración (FICTICIO, solo para el laboratorio)
+redis_host=cache
+redis_password=BurgerRedis2024!
+admin_token=bb-admin-7f3a9c2e1d
+github_token=ghp_d63adeab8f22dbf2cbc03bf7dd5a3b1201aa
