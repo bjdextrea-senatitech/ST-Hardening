@@ -105,6 +105,7 @@ mkdir -p /home/brian/c6/antes /home/brian/c6/despues
 cd /home/brian/senati-m4-aseguramiento && git pull
 # Copia la carpeta de la clase a tu home
 cp -r /home/brian/senati-m4-aseguramiento/clase-06-servicios-web /home/brian/
+# En caso de no aplicar el git pull y hacer el procedimiento manual descargarse la carpeta de github y llevarlo a tu directorio de trabajo (e.g /home/brian/clase6/
 # La umask 027 de la Clase 3 deja los archivos sin lectura para "otros"; los servidores web
 # (www-data, nginx dentro de Docker) necesitan leerlos: damos lectura, nunca escritura
 chmod -R o+rX /home/brian/clase-06-servicios-web
