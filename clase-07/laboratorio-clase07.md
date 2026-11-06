@@ -1,9 +1,5 @@
 # Clase 7 · Laboratorio — Hardening en la nube con Microsoft Azure
 
-**SENATI · Diplomado Gestión de la Ciberseguridad · Módulo 04 "Aseguramiento de los Sistemas"**
-**Docente:** Ademir Cuadros · **Fecha:** jueves 05/11 · **Duración de la práctica:** 2 horas (+ Lab 6 opcional / tarea)
-## Antes de empezar (leer 2 minutos)
-
 - **Cuenta:** cada alumno trabaja en **su propia cuenta gratuita de Azure** (US$200 de crédito por 30 días).
   Crearla es parte del laboratorio (paso **0.0**): así aprendes cómo nace una suscripción y quién responde por ella.
   Si usas **Azure for Students**, funciona igual salvo el usuario "practicante" (los controles IAM saldrán N/A).
