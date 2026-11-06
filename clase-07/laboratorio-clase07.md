@@ -191,9 +191,9 @@ less /home/brian/clase-07-azure/scripts/00-crear-entorno-inseguro.sh
 # Ejecútalo (región por defecto eastus; tarda 2–4 minutos)
 bash /home/brian/clase-07-azure/scripts/00-crear-entorno-inseguro.sh
 # Carga las variables que dejó el script
-source ~/c7/entorno.env
+source /home/brian/c7/entorno.env
 # Revisa los nombres
-cat ~/c7/entorno.env
+cat /home/brian/c7/entorno.env
 ```
 
 ```bash
@@ -253,7 +253,7 @@ bash /home/brian/clase-07-azure/scripts/auditar-azure.sh -o /home/brian/c7/antes
 
 ```bash
 # Audita 6 servicios de la suscripción y además mapea el resultado al CIS Azure 6.0
-/home/brian/prowler/bin/prowler azure --az-cli-auth --service storage network monitor defender policy iam --compliance cis_6.0_azure --output-formats csv html --output-directory /home/brian/c7/antes --output-filename prowler-antes
+/home/brian/prowler/bin/prowler azure --az-cli-auth --compliance cis_6.0_azure --output-formats csv html --output-directory /home/brian/c7/antes --output-filename prowler-antes
 ```
 
 ```bash
@@ -429,7 +429,7 @@ az lock list -g $RG -o table
 # Mismo auditor
 bash /home/brian/clase-07-azure/scripts/auditar-azure.sh -o /home/brian/c7/despues/azure.md
 # Mismo Prowler
-/home/brian/prowler/bin/prowler azure --az-cli-auth --service storage network monitor defender policy iam --compliance cis_6.0_azure --output-formats csv html --output-directory /home/brian/c7/despues --output-filename prowler-despues
+/home/brian/prowler/bin/prowler azure --az-cli-auth --compliance cis_6.0_azure --output-formats csv html --output-directory /home/brian/c7/despues --output-filename prowler-despues
 # Conteo de FAIL y PASS después
 cut -d';' -f1-40 /home/brian/c7/despues/prowler-despues.csv | grep -o ';FAIL;\|;PASS;' | sort | uniq -c
 ```
