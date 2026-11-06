@@ -191,9 +191,9 @@ less /home/brian/clase-07-azure/scripts/00-crear-entorno-inseguro.sh
 # Ejecútalo (región por defecto eastus; tarda 2–4 minutos)
 bash /home/brian/clase-07-azure/scripts/00-crear-entorno-inseguro.sh
 # Carga las variables que dejó el script
-source /home/brian/c7/entorno.env
+source ~/c7/entorno.env
 # Revisa los nombres
-cat /home/brian/c7/entorno.env
+cat ~/c7/entorno.env
 ```
 
 ```bash
