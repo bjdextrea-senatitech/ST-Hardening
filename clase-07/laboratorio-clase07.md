@@ -2,14 +2,6 @@
 
 **SENATI · Diplomado Gestión de la Ciberseguridad · Módulo 04 "Aseguramiento de los Sistemas"**
 **Docente:** Ademir Cuadros · **Fecha:** jueves 05/11 · **Duración de la práctica:** 2 horas (+ Lab 6 opcional / tarea)
-
-> Ciclo de siempre: **medir → enumerar riesgos → endurecer → re-medir → mirar desde afuera.**
-> Hoy el "servidor" es una **suscripción de Azure**. Toda la administración se hace desde la misma
-> VM **Ubuntu Server 22.04** de las clases anteriores, con **Azure CLI** y **Prowler**; el portal web
-> se usa solo para mirar y para dos pasos que no tienen comando.
-
----
-
 ## Antes de empezar (leer 2 minutos)
 
 - **Cuenta:** cada alumno trabaja en **su propia cuenta gratuita de Azure** (US$200 de crédito por 30 días).
