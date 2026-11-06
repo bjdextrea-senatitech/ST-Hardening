@@ -1,5 +1,9 @@
 # Clase 7 · Laboratorio — Hardening en la nube con Microsoft Azure
 
+---
+
+## Antes de empezar (leer 2 minutos)
+
 - **Cuenta:** cada alumno trabaja en **su propia cuenta gratuita de Azure** (US$200 de crédito por 30 días).
   Crearla es parte del laboratorio (paso **0.0**): así aprendes cómo nace una suscripción y quién responde por ella.
   Si usas **Azure for Students**, funciona igual salvo el usuario "practicante" (los controles IAM saldrán N/A).
@@ -88,8 +92,9 @@ mientras no pases tú mismo a "pago por uso".
    - *How do you plan to use…*: **For personal use**.
    - *Country/Region*: **Peru**. **No se puede cambiar después** y debe coincidir con el país de tu tarjeta.
    - Nombre, apellido, correo y celular (sin +51). *Job title* es opcional.
-   - Resuelve la verificación de seguridad, acepta el contrato y haz clic en **Next**.
-4. **Step 2 of 3 · Identity verification**: te llega un código por SMS al celular; escríbelo.
+   - Si te lo pide, verifica tu celular con el código SMS. Resuelve la verificación de seguridad y haz clic en **Next**.
+4. **Step 2 of 3 · Address information**: dirección y ciudad. Marca la **primera casilla** (aceptas el
+   Microsoft Customer Agreement, obligatoria); las otras dos son opcionales. Clic en **Next**.
 5. **Step 3 of 3 · Payment information**: tarjeta de crédito o débito (Visa, Mastercard o Amex).
    - Sirve **solo para verificar tu identidad**: puede aparecer una retención temporal de ~US$1 que se anula sola.
    - *Postal Code* es opcional: **déjalo vacío** (no pongas 51, que es el código de país).
@@ -102,7 +107,8 @@ mientras no pases tú mismo a "pago por uso".
 
 > **Problemas típicos:** *Card declined* → activa las **compras por internet / en el extranjero** en la app
 > de tu banco y reintenta (las de crédito pasan mejor que las de débito). *You're not eligible* → la prueba es
-> una sola vez por persona, tarjeta y teléfono: trabaja en pareja hoy.
+> una sola vez por persona, tarjeta y teléfono: trabaja en pareja hoy. *Suscripciones: Filtrado (0 de 1)* →
+> abre ese filtro y marca **Seleccionar todo**. Tutorial con capturas: `Tutorial_Cuenta_Gratuita_Azure.docx`.
 
 ### 0.1 Alerta de presupuesto (portal, 3 min) — siempre primero
 
@@ -149,8 +155,8 @@ python3 -m venv /home/brian/prowler
 
 ```bash
 # Actualiza el repositorio del curso y copia la carpeta de la clase
-cd /home/brian/senati-m4-aseguramiento && git pull
-cp -r /home/brian/senati-m4-aseguramiento/clase-07-azure /home/brian/
+cd /home/brian && ( [ -d ST-Hardening ] && git -C ST-Hardening pull || git clone https://github.com/bjdextrea-senatitech/ST-Hardening.git )
+cp -r /home/brian/ST-Hardening/Clase-07 /home/brian/clase-07-azure
 # Inicia sesión: abre en tu PC la URL que muestra y escribe el código
 az login --use-device-code
 # Confirma la suscripción activa y el tipo de oferta
@@ -159,9 +165,21 @@ az account show --query "{suscripcion:name, id:id, usuario:user.name}" -o table
 az ad signed-in-user show --query "{upn:userPrincipalName, id:id}" -o table
 ```
 
+```bash
+# Suscripción nueva: avisa a cada servicio de Azure (proveedor de recursos) que la vas a usar.
+# Sin esto, crear la cuenta de almacenamiento falla con "SubscriptionNotFound". Corre en segundo plano (2–10 min).
+for ns in Microsoft.Storage Microsoft.Network Microsoft.OperationalInsights Microsoft.Insights Microsoft.Security Microsoft.PolicyInsights; do az provider register --namespace $ns -o none; done
+# Revisa el avance: todos deben llegar a "Registered" (Storage y Network bastan para el Lab 1)
+az provider list --query "[?namespace=='Microsoft.Storage' || namespace=='Microsoft.Network' || namespace=='Microsoft.OperationalInsights' || namespace=='Microsoft.Insights' || namespace=='Microsoft.Security' || namespace=='Microsoft.PolicyInsights'].{proveedor:namespace, estado:registrationState}" -o table
+```
+
+> **Qué es un proveedor de recursos:** cada servicio de Azure (Storage, Network, Monitor…) es un sistema aparte detrás
+> de Azure Resource Manager. Registrar el proveedor da de alta tu suscripción en ese servicio. Registra solo lo que usas:
+> es el principio de mínima funcionalidad, y cada registro queda en el registro de actividad.
+
 > Si tienes varias suscripciones: `az account set --subscription "<nombre o id>"`.
 
-**Checkpoint 0:** presupuesto creado, `az version` y `prowler --version` funcionan, sesión iniciada.
+**Checkpoint 0:** presupuesto creado, `az version` y `prowler --version` funcionan, sesión iniciada y Microsoft.Storage y Microsoft.Network en `Registered`.
 
 ---
 
@@ -529,6 +547,8 @@ az security assessment list --query "[?contains(id, 'rg-c7-senati') && status.co
 | Los comandos usan nombres vacíos (`--name ''`) | Terminal nueva sin variables | `source /home/brian/c7/entorno.env` |
 | `AADSTS...` o "token expired" | Sesión vencida | `az login --use-device-code` |
 | `The subscription is not registered to use namespace...` | Proveedor de recursos sin registrar | `az provider register --namespace Microsoft.Storage` (o el que indique) y espera 1 minuto |
+| `SubscriptionNotFound` en el Lab 1 | Suscripción recién creada: los proveedores aún no la conocen | El script ya registra los proveedores; espera 2–3 minutos y vuelve a ejecutarlo |
+| `No space left on device` al instalar Prowler | El LV raíz de Ubuntu usa solo la mitad del disco | `sudo vgs` (mira VFree) y `sudo lvextend -r -l +100%FREE /dev/ubuntu-vg/ubuntu-lv` |
 | `PublicAccessNotPermitted` al crear el contenedor (Lab 1) | Azure aún aplica el cambio de la cuenta | El script reintenta solo; si falla, vuelve a ejecutarlo |
 | `AuthorizationPermissionMismatch` (3B) | El rol de datos aún no se propaga | Espera 2–5 minutos |
 | `Insufficient privileges` al crear el usuario | Azure for Students | Sigue sin practicante: IAM sale N/A |
